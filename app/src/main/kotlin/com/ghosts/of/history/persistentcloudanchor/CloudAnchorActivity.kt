@@ -64,7 +64,7 @@ import kotlin.math.hypot
  */
 class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private enum class HostResolveMode {
-        NONE, HOSTING, RESOLVING
+        HOSTING, RESOLVING
     }
 
     // Rendering. The Renderers are created here, and initialized when the GL surface is created.
@@ -394,9 +394,11 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             // Get camera and projection matrices.
             camera.getViewMatrix(viewMatrix, 0)
             camera.getProjectionMatrix(projectionMatrix, 0, 0.1f, 100.0f)
-            frame.acquirePointCloud().use { pointCloud ->
-                pointCloudRenderer.update(pointCloud)
-                pointCloudRenderer.draw(viewMatrix, projectionMatrix)
+            if (currentMode == HostResolveMode.HOSTING) {
+                frame.acquirePointCloud().use { pointCloud ->
+                    pointCloudRenderer.update(pointCloud)
+                    pointCloudRenderer.draw(viewMatrix, projectionMatrix)
+                }
             }
             val colorCorrectionRgba = FloatArray(4)
             val scaleFactor = 1.0f
@@ -427,10 +429,12 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                     }
                 } ?: run { // anchor == null
                     // Visualize planes.
-                    planeRenderer.drawPlanes(
-                            session.getAllTrackables(Plane::class.java),
-                            camera.displayOrientedPose,
-                            projectionMatrix)
+                    if (currentMode == HostResolveMode.HOSTING) {
+                        planeRenderer.drawPlanes(
+                                session.getAllTrackables(Plane::class.java),
+                                camera.displayOrientedPose,
+                                projectionMatrix)
+                    }
                 }
                 // Update the pose of the anchor (to be) hosted if it can be drawn and render the anchor.
             }
