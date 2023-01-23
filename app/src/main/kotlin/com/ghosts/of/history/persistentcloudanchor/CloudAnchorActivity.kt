@@ -35,10 +35,7 @@ import com.ghosts.of.history.common.helpers.CameraPermissionHelper
 import com.ghosts.of.history.common.helpers.DisplayRotationHelper
 import com.ghosts.of.history.common.helpers.FullScreenHelper
 import com.ghosts.of.history.common.helpers.TrackingStateHelper
-import com.ghosts.of.history.common.rendering.BackgroundRenderer
-import com.ghosts.of.history.common.rendering.ObjectRenderer
-import com.ghosts.of.history.common.rendering.PlaneRenderer
-import com.ghosts.of.history.common.rendering.PointCloudRenderer
+import com.ghosts.of.history.common.rendering.*
 import com.ghosts.of.history.persistentcloudanchor.CloudAnchorManager.CloudAnchorListener
 import com.ghosts.of.history.persistentcloudanchor.PrivacyNoticeDialogFragment.HostResolveListener
 import com.google.ar.core.*
@@ -70,10 +67,10 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     // Rendering. The Renderers are created here, and initialized when the GL surface is created.
     private lateinit var surfaceView: GLSurfaceView
     private val backgroundRenderer = BackgroundRenderer()
-    private val anchorObject = ObjectRenderer()
     private val featureMapQualityBarObject = ObjectRenderer()
     private val planeRenderer = PlaneRenderer()
     private val pointCloudRenderer = PointCloudRenderer()
+    private val videoRenderer = VideoRenderer()
     private var installRequested = false
 
     // Temporary matrices allocated here to reduce number of allocations for each frame.
@@ -340,8 +337,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             backgroundRenderer.createOnGlThread(this)
             planeRenderer.createOnGlThread(this, "models/trigrid.png")
             pointCloudRenderer.createOnGlThread(this)
-            anchorObject.createOnGlThread(this, "models/anchor.obj", "models/anchor.png")
-            anchorObject.setMaterialProperties(0.0f, 0.75f, 0.1f, 0.5f)
+            videoRenderer.createOnGlThread(this)
             featureMapQualityBarObject.createOnGlThread(
                     this, "models/map_quality_bar.obj", "models/map_quality_bar.png")
             featureMapQualityBarObject.setMaterialProperties(0.0f, 2.0f, 0.02f, 0.5f)
@@ -401,7 +397,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                 }
             }
             val colorCorrectionRgba = FloatArray(4)
-            val scaleFactor = 1.0f
+            val scaleFactor = 0.2f
             frame.lightEstimate.getColorCorrection(colorCorrectionRgba, 0)
             var shouldDrawFeatureMapQualityUi = false
             synchronized(anchorLock) {
@@ -497,8 +493,11 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     }
 
     private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray) {
-        anchorObject.updateModelMatrix(anchorMatrix, scaleFactor)
-        anchorObject.draw(viewMatrix, projectionMatrix, colorCorrectionRgba)
+        if (!videoRenderer.isStarted) {
+            videoRenderer.play("test.mp4", this)
+        }
+        videoRenderer.update(anchorMatrix, scaleFactor)
+        videoRenderer.draw(viewMatrix, projectionMatrix)
     }
 
     /** Sets the new value of the current anchor. Detaches the old anchor, if it was non-null.  */
