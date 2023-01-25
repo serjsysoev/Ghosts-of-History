@@ -71,7 +71,6 @@ class RequestLocationPermission : AppCompatActivity(), OnTouchListener {
             }
             Toast.makeText(this, "Museums ${museums}", Toast.LENGTH_LONG).show()
             // TODO: I stopped here
-            //
             val intent: Intent = CloudAnchorActivity.newResolvingIntent(this, ArrayList(anchorsToResolve))
             startActivity(intent)
         }
