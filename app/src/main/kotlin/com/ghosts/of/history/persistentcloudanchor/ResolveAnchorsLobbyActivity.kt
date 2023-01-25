@@ -22,6 +22,7 @@ import android.os.Bundle
 import android.view.*
 import android.widget.EditText
 import android.widget.Spinner
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.ghosts.of.history.R
 import com.ghosts.of.history.common.helpers.DisplayRotationHelper
@@ -58,6 +59,7 @@ class ResolveAnchorsLobbyActivity : AppCompatActivity() {
 
     /** Callback function invoked when the Resolve Button is pressed.  */
     private fun onResolveButtonPress() {
+        // Toast.makeText(this, "Lat: ${getCurrentLocation(this)}", Toast.LENGTH_LONG).show()
         val anchorsToResolve = selectedAnchors
                 .filter { it.isSelected }
                 .map { it.anchorId }

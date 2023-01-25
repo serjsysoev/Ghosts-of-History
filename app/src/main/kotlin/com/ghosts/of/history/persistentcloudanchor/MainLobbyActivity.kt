@@ -15,9 +15,17 @@
  */
 package com.ghosts.of.history.persistentcloudanchor
 
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.location.Location
+import android.location.LocationManager
 import android.os.Bundle
+import android.provider.ContactsContract.Data
+import android.util.Log
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.ghosts.of.history.R
 import com.ghosts.of.history.common.helpers.DisplayRotationHelper
 import com.google.android.material.button.MaterialButton
@@ -25,6 +33,7 @@ import com.google.android.material.button.MaterialButton
 /** Main Navigation Activity for the Persistent Cloud Anchor Sample.  */
 class MainLobbyActivity : AppCompatActivity() {
     private lateinit var displayRotationHelper: DisplayRotationHelper
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.main_lobby)
@@ -33,6 +42,12 @@ class MainLobbyActivity : AppCompatActivity() {
         hostButton.setOnClickListener { onHostButtonPress() }
         val resolveButton = findViewById<MaterialButton>(R.id.begin_resolve_button)
         resolveButton.setOnClickListener { onResolveButtonPress() }
+        onResolveButtonPress()
+        if (getCurrentLocation(this) == null) {
+            DataKeeper.isLocationNull = true
+        }
+        //Log.d("Loc","Lat: ${DataKeeper.location.latitude} Lng: ${DataKeeper.location.longitude}")
+        //Toast.makeText(this, "Lat: ${DataKeeper.location.latitude} Lng: ${DataKeeper.location.longitude}", Toast.LENGTH_LONG).show()
     }
 
     override fun onResume() {

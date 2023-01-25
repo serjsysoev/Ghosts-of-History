@@ -24,6 +24,9 @@ android {
         }
     }
     namespace 'com.ghosts.of.history'
+    buildFeatures {
+        viewBinding true
+    }
 }
 
 repositories {

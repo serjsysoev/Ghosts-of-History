@@ -20,7 +20,9 @@
       xmlns:card_view="http://schemas.android.com/tools"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
-      tools:context="com.ghosts.of.history.persistentcloudanchor.MainLobbyActivity">
+      tools:context="com.ghosts.of.history.persistentcloudanchor.MainLobbyActivity"
+    android:background="@drawable/freestockphoto"
+    >
 
       <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guideline_host"
