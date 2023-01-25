@@ -22,6 +22,7 @@ import com.ghosts.of.history.databinding.ActivityRequestLocationPermissionBindin
 import com.ghosts.of.history.persistentcloudanchor.CloudAnchorActivity
 import com.ghosts.of.history.persistentcloudanchor.MUSEUM_LIST_URL
 import com.ghosts.of.history.persistentcloudanchor.PERMISSION_REQUEST_CODE
+import com.ghosts.of.history.persistentcloudanchor.fetchURL
 import java.io.BufferedInputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -62,20 +63,13 @@ class RequestLocationPermission : AppCompatActivity(), OnTouchListener {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (Manifest.permission.ACCESS_FINE_LOCATION in permissions) {
-            Toast.makeText(this, "Success", Toast.LENGTH_LONG).show()
+            // Toast.makeText(this, "Success", Toast.LENGTH_LONG).show()
             val anchorsToResolve = mutableListOf<String>()
-            val museums: List<Museum>
-            val url = URL(MUSEUM_LIST_URL)
-            val connection = url.openConnection() as HttpURLConnection
-            try {
-                val museumListRaw = connection.inputStream.bufferedReader().readText()
-                museums = museumListRaw.split('\n').map { it.trim() }.map { row ->
-                    val rowSplit = row.split(' ').map { it.trim() }.filter { it.isNotEmpty() }
-                    Museum(rowSplit[0], rowSplit[1].toDouble(), rowSplit[2].toDouble())
-                }
-            } finally {
-                connection.disconnect()
+            val museums: List<Museum> = fetchURL(this, MUSEUM_LIST_URL).split('\n').map { it.trim() }.map { row ->
+                val rowSplit = row.split(' ').map { it.trim() }.filter { it.isNotEmpty() }
+                Museum(rowSplit[0], rowSplit[1].toDouble(), rowSplit[2].toDouble())
             }
+            Toast.makeText(this, "Museums ${museums}", Toast.LENGTH_LONG).show()
             // TODO: I stopped here
             val intent: Intent = CloudAnchorActivity.newResolvingIntent(this, ArrayList(anchorsToResolve))
             startActivity(intent)
