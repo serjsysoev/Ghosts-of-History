@@ -70,7 +70,8 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private val featureMapQualityBarObject = ObjectRenderer()
     private val planeRenderer = PlaneRenderer()
     private val pointCloudRenderer = PointCloudRenderer()
-    private val videoRenderer = VideoRenderer()
+    private val videoRendererPool = List(5) { VideoRenderer() }
+    private val boundRendererInstances = mutableMapOf<String, VideoRenderer>()
     private var installRequested = false
 
     // Temporary matrices allocated here to reduce number of allocations for each frame.
@@ -337,7 +338,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             backgroundRenderer.createOnGlThread(this)
             planeRenderer.createOnGlThread(this, "models/trigrid.png")
             pointCloudRenderer.createOnGlThread(this)
-            videoRenderer.createOnGlThread(this)
+            videoRendererPool.forEach { it.createOnGlThread(this) }
             featureMapQualityBarObject.createOnGlThread(
                     this, "models/map_quality_bar.obj", "models/map_quality_bar.png")
             featureMapQualityBarObject.setMaterialProperties(0.0f, 2.0f, 0.02f, 0.5f)
@@ -409,7 +410,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose = resolvedAnchor.pose
                         anchorPose.toMatrix(anchorMatrix, 0)
                         // Update and draw the model and its shadow.
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, resolvedAnchor.cloudAnchorId)
                     }
                 }
                 anchor?.let { anchor ->
@@ -418,7 +419,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose.toMatrix(anchorMatrix, 0)
                         anchorPose.getTranslation(anchorTranslation, 0)
                         anchorTranslation[3] = 1.0f
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, anchor.cloudAnchorId)
                         if (!hostedAnchor) {
                             shouldDrawFeatureMapQualityUi = true
                         }
@@ -492,12 +493,31 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         featureMapQualityUi.drawUi(anchorPose, viewMatrix, projectionMatrix, colorCorrectionRgba)
     }
 
-    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray) {
-        if (!videoRenderer.isStarted) {
-            videoRenderer.play("test.mp4", this)
+    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray, anchorId: String) {
+        var videoRendererInstance: VideoRenderer? = null
+        /* if (!videoRenderer.isStarted) {
+            Log.d("anchorid", anchorId);
+            if (anchorId == "ua-955bfe0a900fe0cc6656109858c1d5d4") {
+                videoRenderer.play("test.mp4", this)
+            } else {
+                videoRenderer.play("badapple.mp4", this)
+            }
+        } */
+        if (boundRendererInstances.containsKey(anchorId)) {
+            videoRendererInstance = boundRendererInstances[anchorId]
+        } else {
+            videoRendererInstance = videoRendererPool.firstNotNullOfOrNull { it.takeIf { !it.isStarted } }
+            Log.d("foundr", videoRendererInstance.toString())
+            if (videoRendererInstance != null) {
+                boundRendererInstances[anchorId] = videoRendererInstance
+            }
         }
-        videoRenderer.update(anchorMatrix, scaleFactor)
-        videoRenderer.draw(viewMatrix, projectionMatrix)
+        when (anchorId) {
+            "ua-955bfe0a900fe0cc6656109858c1d5d4" -> videoRendererInstance?.play("test.mp4", this)
+            else -> videoRendererInstance?.play("badapple.mp4", this)
+        }
+        videoRendererInstance?.update(anchorMatrix, scaleFactor)
+        videoRendererInstance?.draw(viewMatrix, projectionMatrix)
     }
 
     /** Sets the new value of the current anchor. Detaches the old anchor, if it was non-null.  */
