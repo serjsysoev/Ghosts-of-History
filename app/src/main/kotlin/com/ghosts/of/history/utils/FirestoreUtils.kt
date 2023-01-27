@@ -1,7 +1,9 @@
 package com.ghosts.of.history.utils
 
+import android.net.Uri
 import com.google.firebase.ktx.Firebase
 import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.storage.ktx.storage
 
 
 // onSuccessCallback processes an in-storage-path of this video
@@ -24,5 +26,11 @@ fun processAnchorSets(setName: String, onSuccessCallback: (Array<String>?) -> Un
     Firebase.firestore.collection("AnchorSets").whereEqualTo("name", setName).get().addOnSuccessListener {docs ->
         val firstDoc = if (docs.documents.size > 0) {docs.documents[0]} else {null}
         onSuccessCallback(firstDoc?.get("anchor_ids") as Array<String>?)
+    }
+}
+
+fun fetchVideoFromStorage(path: String, onSuccessCallback: (Uri?) -> Unit) {
+    val storage = Firebase.storage.reference.child("gs://ghosts-of-history.appspot.com/$path").downloadUrl.addOnSuccessListener {
+        onSuccessCallback(it)
     }
 }
