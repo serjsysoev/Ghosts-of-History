@@ -70,8 +70,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private val featureMapQualityBarObject = ObjectRenderer()
     private val planeRenderer = PlaneRenderer()
     private val pointCloudRenderer = PointCloudRenderer()
-    private val videoRendererPool = List(5) { VideoRenderer() }
-    private val boundRendererInstances = mutableMapOf<String, VideoRenderer>()
+    private val videoRenderer = VideoRenderer()
     private var installRequested = false
 
     // Temporary matrices allocated here to reduce number of allocations for each frame.
@@ -338,7 +337,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             backgroundRenderer.createOnGlThread(this)
             planeRenderer.createOnGlThread(this, "models/trigrid.png")
             pointCloudRenderer.createOnGlThread(this)
-            videoRendererPool.forEach { it.createOnGlThread(this) }
+            videoRenderer.createOnGlThread(this)
             featureMapQualityBarObject.createOnGlThread(
                     this, "models/map_quality_bar.obj", "models/map_quality_bar.png")
             featureMapQualityBarObject.setMaterialProperties(0.0f, 2.0f, 0.02f, 0.5f)
@@ -493,31 +492,18 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         featureMapQualityUi.drawUi(anchorPose, viewMatrix, projectionMatrix, colorCorrectionRgba)
     }
 
+    var tmp = false
+
     private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray, anchorId: String) {
-        var videoRendererInstance: VideoRenderer? = null
-        /* if (!videoRenderer.isStarted) {
-            Log.d("anchorid", anchorId);
-            if (anchorId == "ua-955bfe0a900fe0cc6656109858c1d5d4") {
-                videoRenderer.play("test.mp4", this)
-            } else {
-                videoRenderer.play("badapple.mp4", this)
-            }
-        } */
-        if (boundRendererInstances.containsKey(anchorId)) {
-            videoRendererInstance = boundRendererInstances[anchorId]
-        } else {
-            videoRendererInstance = videoRendererPool.firstNotNullOfOrNull { it.takeIf { !it.isStarted } }
-            Log.d("foundr", videoRendererInstance.toString())
-            if (videoRendererInstance != null) {
-                boundRendererInstances[anchorId] = videoRendererInstance
-            }
+        if (!videoRenderer.isStarted) {
+            videoRenderer.play("test.mp4", this)
+            tmp = true
+        } else if (tmp && anchorId == "ua-18351539f5881ce7ed743d8374d46e0a") {
+            tmp = false
+            videoRenderer.play("badapple.mp4", this)
         }
-        when (anchorId) {
-            "ua-955bfe0a900fe0cc6656109858c1d5d4" -> videoRendererInstance?.play("test.mp4", this)
-            else -> videoRendererInstance?.play("badapple.mp4", this)
-        }
-        videoRendererInstance?.update(anchorMatrix, scaleFactor)
-        videoRendererInstance?.draw(viewMatrix, projectionMatrix)
+        videoRenderer.update(anchorMatrix, scaleFactor)
+        videoRenderer.draw(viewMatrix, projectionMatrix)
     }
 
     /** Sets the new value of the current anchor. Detaches the old anchor, if it was non-null.  */
