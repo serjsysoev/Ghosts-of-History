@@ -14,6 +14,36 @@ fun processVideoPathByName(videoName: String, onSuccessCallback: (String?) -> Un
     }
 }
 
+// onSuccessCallback processes an in-storage-path of this video
+fun saveAnchorToFirebase(anchorId: String, anchorName: String) {
+    val document = mapOf(
+            "id" to anchorId,
+            "name" to anchorName,
+            "video_name" to ""
+    )
+    Firebase.firestore
+            .collection("AnchorBindings")
+            .document()
+            .set(document)
+}
+
+fun getAnchorsDataFromFirebase(onSuccessCallback: (List<AnchorData>) -> Unit) {
+    Firebase.firestore
+            .collection("AnchorBindings")
+            .whereNotEqualTo("video_name", "")
+            .get()
+            .addOnSuccessListener { result ->
+                result.map {
+                    AnchorData(
+                            it.get("id") as String,
+                            it.get("video_name") as String
+                    )
+                }.let(onSuccessCallback)
+            }
+}
+
+data class AnchorData(val anchorId: String, val videoName: String)
+
 // onSuccessCallback processes just a video name
 fun processAnchorDescription(anchorId: String, onSuccessCallback: (String?) -> Unit) {
     Firebase.firestore.collection("AnchorBindings").whereEqualTo("id", anchorId).get().addOnSuccessListener {docs ->

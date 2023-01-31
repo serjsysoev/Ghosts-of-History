@@ -52,7 +52,7 @@ class MainLobbyActivity : AppCompatActivity() {
 
     /** Callback function invoked when the Resolve Button is pressed.  */
     private fun onResolveButtonPress() {
-        val intent: Intent = ResolveAnchorsLobbyActivity.newIntent(this)
+        val intent: Intent = CloudAnchorActivity.newResolvingIntent(this)
         startActivity(intent)
     }
 }

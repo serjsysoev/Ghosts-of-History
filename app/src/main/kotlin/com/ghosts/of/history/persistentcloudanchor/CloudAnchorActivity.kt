@@ -38,6 +38,8 @@ import com.ghosts.of.history.common.helpers.TrackingStateHelper
 import com.ghosts.of.history.common.rendering.*
 import com.ghosts.of.history.persistentcloudanchor.CloudAnchorManager.CloudAnchorListener
 import com.ghosts.of.history.persistentcloudanchor.PrivacyNoticeDialogFragment.HostResolveListener
+import com.ghosts.of.history.utils.getAnchorsDataFromFirebase
+import com.ghosts.of.history.utils.saveAnchorToFirebase
 import com.google.ar.core.*
 import com.google.ar.core.ArCoreApk.InstallStatus
 import com.google.ar.core.Config.CloudAnchorMode
@@ -46,7 +48,6 @@ import com.google.ar.core.exceptions.UnavailableApkTooOldException
 import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.hypot
@@ -68,9 +69,11 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private lateinit var surfaceView: GLSurfaceView
     private val backgroundRenderer = BackgroundRenderer()
     private val featureMapQualityBarObject = ObjectRenderer()
+    private val objectRenderer = ObjectRenderer()
     private val planeRenderer = PlaneRenderer()
     private val pointCloudRenderer = PointCloudRenderer()
     private val videoRenderer = VideoRenderer()
+    private val videoPlayers = mutableMapOf<String, VideoPlayer>()
     private var installRequested = false
 
     // Temporary matrices allocated here to reduce number of allocations for each frame.
@@ -108,6 +111,9 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
 
     @GuardedBy("anchorLock")
     private var unresolvedAnchorIds: MutableList<String> = ArrayList()
+
+    @GuardedBy("anchorLock")
+    private var anchorIdToVideoName: Map<String, String> = emptyMap()
     private var cloudAnchorManager: CloudAnchorManager? = null
     private var currentMode: HostResolveMode? = null
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -341,6 +347,8 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             featureMapQualityBarObject.createOnGlThread(
                     this, "models/map_quality_bar.obj", "models/map_quality_bar.png")
             featureMapQualityBarObject.setMaterialProperties(0.0f, 2.0f, 0.02f, 0.5f)
+            objectRenderer.createOnGlThread(this, "models/anchor.obj", "models/anchor.png")
+            objectRenderer.setMaterialProperties(0.0f, 0.75f, 0.1f, 0.5f)
         } catch (ex: IOException) {
             Log.e(TAG, "Failed to read an asset file", ex)
         }
@@ -397,7 +405,6 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                 }
             }
             val colorCorrectionRgba = FloatArray(4)
-            val scaleFactor = 0.2f
             frame.lightEstimate.getColorCorrection(colorCorrectionRgba, 0)
             var shouldDrawFeatureMapQualityUi = false
             synchronized(anchorLock) {
@@ -408,8 +415,9 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         // during calls to session.update() as ARCore refines its estimate of the world.
                         anchorPose = resolvedAnchor.pose
                         anchorPose.toMatrix(anchorMatrix, 0)
+                        val scaleFactor = 0.2f
                         // Update and draw the model and its shadow.
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(resolvedAnchor, anchorMatrix, scaleFactor, colorCorrectionRgba)
                     }
                 }
                 anchor?.let { anchor ->
@@ -418,7 +426,8 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose.toMatrix(anchorMatrix, 0)
                         anchorPose.getTranslation(anchorTranslation, 0)
                         anchorTranslation[3] = 1.0f
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        val scaleFactor = 1f
+                        drawAnchor(anchor, anchorMatrix, scaleFactor, colorCorrectionRgba)
                         if (!hostedAnchor) {
                             shouldDrawFeatureMapQualityUi = true
                         }
@@ -492,12 +501,22 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         featureMapQualityUi.drawUi(anchorPose, viewMatrix, projectionMatrix, colorCorrectionRgba)
     }
 
-    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray) {
-        if (!videoRenderer.isStarted) {
-            videoRenderer.play("test.mp4", this)
+    private fun drawAnchor(anchor: Anchor,
+                           anchorMatrix: FloatArray,
+                           scaleFactor: Float,
+                           colorCorrectionRgba: FloatArray) {
+        if (currentMode == HostResolveMode.HOSTING) {
+            objectRenderer.updateModelMatrix(anchorMatrix, scaleFactor)
+            objectRenderer.draw(viewMatrix, projectionMatrix, colorCorrectionRgba)
+        } else {
+            val videoPlayer = videoPlayers[anchor.cloudAnchorId] ?: return
+            if (!videoPlayer.isStarted) {
+                val videoName = checkNotNull(anchorIdToVideoName[anchor.cloudAnchorId])
+                videoPlayer.play(videoName, this)
+            }
+            videoPlayer.update(anchorMatrix, scaleFactor)
+            videoRenderer.draw(videoPlayer, viewMatrix, projectionMatrix)
         }
-        videoRenderer.update(anchorMatrix, scaleFactor)
-        videoRenderer.draw(viewMatrix, projectionMatrix)
     }
 
     /** Sets the new value of the current anchor. Detaches the old anchor, if it was non-null.  */
@@ -513,6 +532,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         synchronized(anchorLock) {
             if (unresolvedAnchorIds.contains(newAnchor.cloudAnchorId)) {
                 resolvedAnchors.add(newAnchor)
+                videoPlayers[newAnchor.cloudAnchorId] = VideoPlayer()
                 unresolvedAnchorIds.remove(newAnchor.cloudAnchorId)
             }
         }
@@ -534,16 +554,19 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         }
         createSession()
         val resolveListener = ResolveListener()
-        synchronized(anchorLock) {
-            unresolvedAnchorIds = intent.getStringArrayListExtra(EXTRA_ANCHORS_TO_RESOLVE)!!
-            debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
-            // Encourage the user to look at a previously mapped area.
-            userMessageText.setText(R.string.resolving_processing)
-            Log.i(TAG, String.format(
-                    "Attempting to resolve %d anchor(s): %s",
-                    unresolvedAnchorIds.size, unresolvedAnchorIds))
-            for (cloudAnchorId in unresolvedAnchorIds) {
-                cloudAnchorManager!!.resolveCloudAnchor(cloudAnchorId, resolveListener)
+        getAnchorsDataFromFirebase { anchorsData ->
+            synchronized(anchorLock) {
+                unresolvedAnchorIds = anchorsData.map { it.anchorId }.toMutableList()
+                anchorIdToVideoName = anchorsData.associate { it.anchorId to it.videoName }
+                debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
+                // Encourage the user to look at a previously mapped area.
+                userMessageText.setText(R.string.resolving_processing)
+                Log.i(TAG, String.format(
+                        "Attempting to resolve %d anchor(s): %s",
+                        unresolvedAnchorIds.size, unresolvedAnchorIds))
+                for (cloudAnchorId in unresolvedAnchorIds) {
+                    cloudAnchorManager!!.resolveCloudAnchor(cloudAnchorId, resolveListener)
+                }
             }
         }
     }
@@ -600,15 +623,11 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
 
         /** Callback function invoked when the user presses the OK button in the Save Anchor Dialog.  */
         private fun onAnchorNameEntered(anchorNickname: String) {
-            saveAnchorToStorage(cloudAnchorId, anchorNickname, sharedPreferences)
-            userMessageText.visibility = View.GONE
-            debugText.text = getString(R.string.debug_hosting_success, cloudAnchorId)
-            val sendIntent = Intent()
-            sendIntent.action = Intent.ACTION_SEND
-            sendIntent.putExtra(Intent.EXTRA_TEXT, cloudAnchorId)
-            sendIntent.type = "text/plain"
-            val shareIntent = Intent.createChooser(sendIntent, null)
-            startActivity(shareIntent)
+            cloudAnchorId?.let { anchorId ->
+                saveAnchorToFirebase(anchorId, anchorNickname)
+            }
+            val intent = Intent(this@CloudAnchorActivity, MainLobbyActivity::class.java)
+            startActivity(intent)
         }
 
         private fun saveAnchorWithNickname() {
@@ -618,8 +637,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             val hostDialogFragment = HostDialogFragment()
             // Supply num input as an argument.
             val args = Bundle()
-            args.putString(
-                    "nickname", getString(R.string.nickname_default, getNumStoredAnchors(sharedPreferences)))
+            args.putString("nickname", getString(R.string.nickname_default))
             hostDialogFragment.setOkListener(::onAnchorNameEntered)
             hostDialogFragment.arguments = args
             hostDialogFragment.show(supportFragmentManager, "HostDialog")
@@ -634,14 +652,10 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     companion object {
         private val TAG = CloudAnchorActivity::class.java.simpleName
         private const val EXTRA_HOSTING_MODE = "persistentcloudanchor.hosting_mode"
-        private const val EXTRA_ANCHORS_TO_RESOLVE = "persistentcloudanchor.anchors_to_resolve"
         private const val QUALITY_INSUFFICIENT_STRING = "INSUFFICIENT"
         private const val QUALITY_SUFFICIENT_GOOD_STRING = "SUFFICIENT-GOOD"
         private const val ALLOW_SHARE_IMAGES_KEY = "ALLOW_SHARE_IMAGES"
         const val PREFERENCE_FILE_KEY = "CLOUD_ANCHOR_PREFERENCES"
-        const val HOSTED_ANCHOR_IDS = "anchor_ids"
-        const val HOSTED_ANCHOR_NAMES = "anchor_names"
-        const val HOSTED_ANCHOR_MINUTES = "anchor_minutes"
         private const val MIN_DISTANCE = 0.2
         private const val MAX_DISTANCE = 10.0
         fun newHostingIntent(packageContext: Context?): Intent {
@@ -650,32 +664,13 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             return intent
         }
 
-        fun newResolvingIntent(packageContext: Context?, anchorsToResolve: ArrayList<String>): Intent {
+        fun newResolvingIntent(packageContext: Context?): Intent {
             val intent = Intent(packageContext, CloudAnchorActivity::class.java)
             intent.putExtra(EXTRA_HOSTING_MODE, false)
-            intent.putExtra(EXTRA_ANCHORS_TO_RESOLVE, anchorsToResolve)
             return intent
         }
 
         private const val QUALITY_THRESHOLD = 0.6f
-        private fun saveAnchorToStorage(anchorId: String?,
-                                        anchorNickname: String,
-                                        anchorPreferences: SharedPreferences) {
-            var hostedAnchorIds = anchorPreferences.getString(HOSTED_ANCHOR_IDS, "")
-            var hostedAnchorNames = anchorPreferences.getString(HOSTED_ANCHOR_NAMES, "")
-            var hostedAnchorMinutes = anchorPreferences.getString(HOSTED_ANCHOR_MINUTES, "")
-            hostedAnchorIds += "$anchorId;"
-            hostedAnchorNames += "$anchorNickname;"
-            hostedAnchorMinutes += TimeUnit.MILLISECONDS.toMinutes(System.currentTimeMillis()).toString() + ";"
-            anchorPreferences.edit().putString(HOSTED_ANCHOR_IDS, hostedAnchorIds).apply()
-            anchorPreferences.edit().putString(HOSTED_ANCHOR_NAMES, hostedAnchorNames).apply()
-            anchorPreferences.edit().putString(HOSTED_ANCHOR_MINUTES, hostedAnchorMinutes).apply()
-        }
-
-        private fun getNumStoredAnchors(anchorPreferences: SharedPreferences): Int {
-            val hostedAnchorIds = anchorPreferences.getString(HOSTED_ANCHOR_IDS, "")!!
-            return hostedAnchorIds.split(";".toRegex()).toTypedArray().size - 1
-        }
 
         /** Returns `true` if and only if the hit can be used to create an Anchor reliably.  */
         private fun shouldCreateAnchorWithHit(hit: HitResult): Boolean {

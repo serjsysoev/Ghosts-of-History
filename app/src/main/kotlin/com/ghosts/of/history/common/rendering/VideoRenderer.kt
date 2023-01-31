@@ -7,8 +7,6 @@ import android.media.MediaPlayer
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.Matrix
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.Surface
 import com.ghosts.of.history.common.rendering.ShaderUtil.checkGLError
@@ -19,42 +17,18 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import javax.microedition.khronos.opengles.GL10
 
-class VideoRenderer : OnFrameAvailableListener {
-    private lateinit var videoTexture: SurfaceTexture
-    private var mTextureId = 0
+class VideoRenderer {
     private var mQuadProgram = 0
-    private val lock = Object()
     private val modelViewProjection = FloatArray(16)
     private val modelView = FloatArray(16)
     private lateinit var mQuadVertices: FloatBuffer
-    private val mModelMatrix = FloatArray(16)
-    private lateinit var player: MediaPlayer
-    private var frameAvailable = false
-    private var done = false
-    private var prepared = false
-    var isStarted = false
-        private set
-    private lateinit var mTexCoordTransformationMatrix: Array<FloatArray>
+    private val mTexCoordTransformationMatrix = FloatArray(16)
     private var mQuadPositionParam = 0
     private var mQuadTexCoordParam = 0
     private var mModelViewProjectionUniform = 0
-    private val VIDEO_QUAD_TEXTCOORDS_TRANSFORMED =
-            floatArrayOf(0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f)
 
     fun createOnGlThread(context: Context) {
-        // 1 texture to hold the video frame.
-        val textures = IntArray(1)
-        GLES20.glGenTextures(1, textures, 0)
-        mTextureId = textures[0]
-        val mTextureTarget = GLES11Ext.GL_TEXTURE_EXTERNAL_OES
-        GLES20.glBindTexture(mTextureTarget, mTextureId)
-        GLES20.glTexParameteri(mTextureTarget, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
-        GLES20.glTexParameteri(mTextureTarget, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
-        videoTexture = SurfaceTexture(mTextureId)
-        videoTexture.setOnFrameAvailableListener(this)
-        mTexCoordTransformationMatrix = Array(1) { FloatArray(16) }
         createQuardCoord()
-        createQuadTextCoord()
         val vertexShader = ShaderUtil.loadGLShader(
                 tag = TAG,
                 context = context,
@@ -76,38 +50,30 @@ class VideoRenderer : OnFrameAvailableListener {
         mModelViewProjectionUniform =
                 GLES20.glGetUniformLocation(mQuadProgram, "u_ModelViewProjection")
         checkGLError(TAG, "Program parameters")
-        Matrix.setIdentityM(mModelMatrix, 0)
-        initializeMediaPlayer()
     }
 
-    fun update(modelMatrix: FloatArray, scaleFactor: Float) {
-        val scaleMatrix = FloatArray(16)
-        Matrix.setIdentityM(scaleMatrix, 0)
-        scaleMatrix[0] = scaleFactor
-        scaleMatrix[5] = scaleFactor
-        scaleMatrix[10] = scaleFactor
-        Matrix.multiplyMM(mModelMatrix, 0, modelMatrix, 0, scaleMatrix, 0)
-    }
-
-    fun draw(cameraView: FloatArray, cameraPerspective: FloatArray) {
-        if (done || !prepared) {
+    fun draw(player: VideoPlayer, cameraView: FloatArray, cameraPerspective: FloatArray) {
+        if (!player.initialized) {
+            println("initialize!")
+            player.initialize()
+        }
+        if (player.done || !player.prepared) {
             return
         }
-        synchronized(this) {
-            if (frameAvailable) {
-                videoTexture.updateTexImage()
-                frameAvailable = false
-                videoTexture.getTransformMatrix(mTexCoordTransformationMatrix[0])
-                setVideoDimensions(mTexCoordTransformationMatrix[0])
-                createQuadTextCoord()
+        synchronized(player.lock) {
+            if (player.frameAvailable) {
+                player.videoTexture.updateTexImage()
+                player.frameAvailable = false
+                player.videoTexture.getTransformMatrix(mTexCoordTransformationMatrix)
+                setVideoDimensions(player.VIDEO_QUAD_TEXTCOORDS_TRANSFORMED, mTexCoordTransformationMatrix)
             }
         }
-        Matrix.multiplyMM(modelView, 0, cameraView, 0, mModelMatrix, 0)
+        Matrix.multiplyMM(modelView, 0, cameraView, 0, player.mModelMatrix, 0)
         Matrix.multiplyMM(modelViewProjection, 0, cameraPerspective, 0, modelView, 0)
 
         GLES20.glEnable(GL10.GL_BLEND)
         GLES20.glBlendFunc(GL10.GL_SRC_ALPHA, GL10.GL_ONE_MINUS_SRC_ALPHA)
-        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mTextureId)
+        GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, player.mTextureId)
         GLES20.glUseProgram(mQuadProgram)
 
 
@@ -127,7 +93,7 @@ class VideoRenderer : OnFrameAvailableListener {
                 /* type = */ GLES20.GL_FLOAT,
                 /* normalized = */ false,
                 /* stride = */ 0,
-                /* ptr = */ fillBuffer(VIDEO_QUAD_TEXTCOORDS_TRANSFORMED))
+                /* ptr = */ fillBuffer(player.VIDEO_QUAD_TEXTCOORDS_TRANSFORMED))
 
         // Enable vertex arrays
         GLES20.glEnableVertexAttribArray(mQuadPositionParam)
@@ -146,78 +112,19 @@ class VideoRenderer : OnFrameAvailableListener {
         checkGLError(TAG, "Draw")
     }
 
-    private fun setVideoDimensions(textureCoordMatrix: FloatArray) {
+    private fun setVideoDimensions(videoQuadTextcoordsTransformed: FloatArray, textureCoordMatrix: FloatArray) {
         var tempUVMultRes = uvMultMat4f(QUAD_TEXCOORDS[0], QUAD_TEXCOORDS[1], textureCoordMatrix)
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[0] = tempUVMultRes[0]
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[1] = tempUVMultRes[1]
+        videoQuadTextcoordsTransformed[0] = tempUVMultRes[0]
+        videoQuadTextcoordsTransformed[1] = tempUVMultRes[1]
         tempUVMultRes = uvMultMat4f(QUAD_TEXCOORDS[2], QUAD_TEXCOORDS[3], textureCoordMatrix)
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[2] = tempUVMultRes[0]
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[3] = tempUVMultRes[1]
+        videoQuadTextcoordsTransformed[2] = tempUVMultRes[0]
+        videoQuadTextcoordsTransformed[3] = tempUVMultRes[1]
         tempUVMultRes = uvMultMat4f(QUAD_TEXCOORDS[4], QUAD_TEXCOORDS[5], textureCoordMatrix)
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[4] = tempUVMultRes[0]
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[5] = tempUVMultRes[1]
+        videoQuadTextcoordsTransformed[4] = tempUVMultRes[0]
+        videoQuadTextcoordsTransformed[5] = tempUVMultRes[1]
         tempUVMultRes = uvMultMat4f(QUAD_TEXCOORDS[6], QUAD_TEXCOORDS[7], textureCoordMatrix)
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[6] = tempUVMultRes[0]
-        VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[7] = tempUVMultRes[1]
-    }
-
-    fun play(filename: String, context: Context): Boolean {
-        player.reset()
-        done = false
-        player.setOnPreparedListener { mp: MediaPlayer ->
-            prepared = true
-            mp.start()
-        }
-        player.setOnErrorListener { _: MediaPlayer?, _: Int, _: Int ->
-            done = true
-            false
-        }
-        player.setOnCompletionListener { done = true }
-        player.setOnInfoListener { _: MediaPlayer?, _: Int, _: Int -> false }
-        try {
-            val assets = context.assets
-            val descriptor = assets.openFd(filename)
-            player.setDataSource(
-                    descriptor.fileDescriptor,
-                    descriptor.startOffset,
-                    descriptor.length)
-            player.setSurface(Surface(videoTexture))
-            player.isLooping = true
-            player.prepareAsync()
-            synchronized(this) { isStarted = true }
-        } catch (e: IOException) {
-            Log.e(TAG, "Exception preparing movie", e)
-            return false
-        }
-        return true
-    }
-
-    private fun initializeMediaPlayer() {
-        val handler = handler ?: run {
-            val newHandler = Handler(Looper.getMainLooper())
-            handler = newHandler
-            newHandler
-        }
-        handler.post {
-            synchronized(lock) {
-                player = MediaPlayer()
-                lock.notify()
-            }
-        }
-    }
-
-    override fun onFrameAvailable(surfaceTexture: SurfaceTexture) {
-        synchronized(this) { frameAvailable = true }
-    }
-
-    private fun createQuadTextCoord() {
-        val numVertices = 4
-        val bbTexCoords =
-                ByteBuffer.allocateDirect(numVertices * TEXCOORDS_PER_VERTEX * FLOAT_SIZE)
-        bbTexCoords.order(ByteOrder.nativeOrder())
-        val mQuadTexCoord = bbTexCoords.asFloatBuffer()
-        mQuadTexCoord.put(QUAD_TEXCOORDS)
-        mQuadTexCoord.position(0)
+        videoQuadTextcoordsTransformed[6] = tempUVMultRes[0]
+        videoQuadTextcoordsTransformed[7] = tempUVMultRes[1]
     }
 
     // Make a quad to hold the movie
@@ -265,6 +172,95 @@ class VideoRenderer : OnFrameAvailableListener {
                 1.0f, 0.0f,
                 1.0f, 1.0f)
         private const val FLOAT_SIZE = 4
-        private var handler: Handler? = null
+    }
+}
+
+class VideoPlayer : OnFrameAvailableListener {
+    private val player = MediaPlayer()
+    lateinit var videoTexture: SurfaceTexture
+    var initialized = false
+        private set
+    var done = false
+        private set
+    var prepared = false
+        private set
+    var isStarted = false
+        private set
+    var mTextureId = 0
+    var frameAvailable = false
+    val mModelMatrix = FloatArray(16)
+    val VIDEO_QUAD_TEXTCOORDS_TRANSFORMED =
+            floatArrayOf(0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f)
+    val lock = Object()
+
+    fun initialize() {
+        val textures = IntArray(1)
+        GLES20.glGenTextures(1, textures, 0)
+        mTextureId = textures[0]
+        println("mTextureId $mTextureId")
+        val mTextureTarget = GLES11Ext.GL_TEXTURE_EXTERNAL_OES
+        GLES20.glBindTexture(mTextureTarget, mTextureId)
+        GLES20.glTexParameteri(mTextureTarget, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+        GLES20.glTexParameteri(mTextureTarget, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_NEAREST)
+        videoTexture = SurfaceTexture(mTextureId)
+        videoTexture.setOnFrameAvailableListener(this)
+        Matrix.setIdentityM(mModelMatrix, 0)
+        player.setSurface(Surface(videoTexture))
+        player.prepareAsync()
+        initialized = true
+    }
+
+    fun play(filename: String, context: Context): Boolean {
+        player.reset()
+        done = false
+        player.setOnPreparedListener { mp: MediaPlayer ->
+            prepared = true
+            mp.start()
+        }
+        player.setOnErrorListener { _: MediaPlayer?, _: Int, _: Int ->
+            done = true
+            false
+        }
+        player.setOnCompletionListener { done = true }
+        player.setOnInfoListener { _: MediaPlayer?, _: Int, _: Int -> false }
+        try {
+            val assets = context.assets
+            val descriptor = assets.openFd(filename)
+            player.setDataSource(
+                    descriptor.fileDescriptor,
+                    descriptor.startOffset,
+                    descriptor.length)
+            player.isLooping = true
+            synchronized(lock) { isStarted = true }
+        } catch (e: IOException) {
+            Log.e(TAG, "Exception preparing movie", e)
+            return false
+        }
+        return true
+    }
+
+    fun pausePlayback() {
+        player.pause()
+    }
+
+    fun continuePlayback() {
+        player.start()
+    }
+
+    fun update(modelMatrix: FloatArray, scaleFactor: Float) {
+        val scaleMatrix = FloatArray(16)
+        Matrix.setIdentityM(scaleMatrix, 0)
+        scaleMatrix[0] = scaleFactor
+        scaleMatrix[5] = scaleFactor
+        scaleMatrix[10] = scaleFactor
+        Matrix.multiplyMM(mModelMatrix, 0, modelMatrix, 0, scaleMatrix, 0)
+    }
+
+    override fun onFrameAvailable(surfaceTexture: SurfaceTexture) {
+        synchronized(lock) { frameAvailable = true }
+    }
+
+    companion object {
+        private val TAG = VideoPlayer::class.java.simpleName
     }
 }
