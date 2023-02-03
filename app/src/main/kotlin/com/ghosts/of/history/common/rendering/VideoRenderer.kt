@@ -40,6 +40,9 @@ class VideoRenderer : OnFrameAvailableListener {
     private var mModelViewProjectionUniform = 0
     private val VIDEO_QUAD_TEXTCOORDS_TRANSFORMED =
             floatArrayOf(0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f)
+    private var currentAnchor: String = ""
+
+    fun getCurrentAnchor(): String = currentAnchor
 
     fun createOnGlThread(context: Context) {
         // 1 texture to hold the video frame.
@@ -161,7 +164,7 @@ class VideoRenderer : OnFrameAvailableListener {
         VIDEO_QUAD_TEXTCOORDS_TRANSFORMED[7] = tempUVMultRes[1]
     }
 
-    fun play(filename: String, context: Context): Boolean {
+    fun play(filename: String, context: Context, anchorId: String): Boolean {
         player.reset()
         done = false
         player.setOnPreparedListener { mp: MediaPlayer ->
@@ -189,6 +192,7 @@ class VideoRenderer : OnFrameAvailableListener {
             Log.e(TAG, "Exception preparing movie", e)
             return false
         }
+        currentAnchor = anchorId
         return true
     }
 
@@ -196,6 +200,7 @@ class VideoRenderer : OnFrameAvailableListener {
         player.reset()
         player.stop()
         isStarted = false
+        currentAnchor = ""
     }
 
     private fun initializeMediaPlayer() {
