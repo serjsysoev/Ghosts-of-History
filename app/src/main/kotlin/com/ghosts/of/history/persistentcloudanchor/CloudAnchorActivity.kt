@@ -559,7 +559,6 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         createSession()
         val resolveListener = ResolveListener()
         synchronized(anchorLock) {
-            // unresolvedAnchorIds = intent.getStringArrayListExtra(EXTRA_ANCHORS_TO_RESOLVE)!!
             unresolvedAnchorIds = getAnchorIdList()
             Log.d("ANCHORLIST", "$unresolvedAnchorIds")
             debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
