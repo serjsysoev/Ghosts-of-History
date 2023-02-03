@@ -6,3 +6,4 @@ fun getVideoFileName(anchorId: String): String {
         else -> "badapple.mp4"
     }
 }
+// very hardcoded...
