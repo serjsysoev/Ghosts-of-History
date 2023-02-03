@@ -417,7 +417,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose = resolvedAnchor.pose
                         anchorPose.toMatrix(anchorMatrix, 0)
                         // Update and draw the model and its shadow.
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, viewMatrix, anchorPose)
+                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, viewMatrix, anchorPose, resolvedAnchor.cloudAnchorId)
                         // debugText.text = "angle: ${getViewAngle(viewMatrix, anchorPose)}"
                         // Log.d("DEGREES", "angle: ${getViewAngle(viewMatrix, anchorPose)}")
                     }
@@ -428,7 +428,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose.toMatrix(anchorMatrix, 0)
                         anchorPose.getTranslation(anchorTranslation, 0)
                         anchorTranslation[3] = 1.0f
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, viewMatrix, anchorPose)
+                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, viewMatrix, anchorPose, anchor.cloudAnchorId)
                         if (!hostedAnchor) {
                             shouldDrawFeatureMapQualityUi = true
                         }
@@ -502,9 +502,9 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         featureMapQualityUi.drawUi(anchorPose, viewMatrix, projectionMatrix, colorCorrectionRgba)
     }
 
-    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray, view: FloatArray, anchorPose: Pose) {
+    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray, view: FloatArray, anchorPose: Pose, anchorId: String) {
         if (!videoRenderer.isStarted) {
-            videoRenderer.play("test.mp4", this)
+            videoRenderer.play(getVideoFileName(anchorId), this)
         } else {
             if (canAnchorBeSeen(view, anchorPose)) {
             } else {
@@ -590,7 +590,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                     userMessageText.text = getString(R.string.resolving_success)
                     synchronized(anchorLock) {
                         if (unresolvedAnchorIds.isEmpty()) {
-                            // debugText.text = getString(R.string.debug_resolving_success)
+                            debugText.text = getString(R.string.debug_resolving_success)
                         } else {
                             Log.i(
                                     TAG, String.format(

@@ -64,7 +64,7 @@ class MultiSelectItem(context: Context,
             viewHolder = convertView.tag as ViewHolder
         }
         if (position == 0) {
-            viewHolder.anchorName.text = "    Select Anchors"
+            viewHolder.anchorName.text = "    Select Ghosts"
             viewHolder.creationTime.text = ""
         } else {
             val anchorPosition = position - 1
