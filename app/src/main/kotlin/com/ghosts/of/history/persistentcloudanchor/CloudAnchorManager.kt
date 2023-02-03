@@ -15,6 +15,7 @@
  */
 package com.ghosts.of.history.persistentcloudanchor
 
+import android.util.Log
 import com.google.ar.core.Anchor
 import com.google.ar.core.Anchor.CloudAnchorState
 import com.google.ar.core.Session
@@ -55,7 +56,19 @@ internal class CloudAnchorManager(private val session: Session) {
             val (anchor, listener) = it.next()
             if (isReturnableState(anchor.cloudAnchorState)) {
                 listener.onComplete(anchor)
-                it.remove()
+                it.remove() // ToDo: I may add tracking of anchors going out of view by changing this line
+                // No, I cannot. I have tried to comment out this line and after an anchor has
+                // been found the code inside this if would be executed regardless of whether
+                // the camera sees the anchor.
+                // I have tried logging anchor.cloudAnchorState, it is COMPLETE even if you
+                // close the camera with your hand after it spots that anchor once
+
+                // for that reason, I will need to use OpenGL methods or even manual
+                // computation of 3D spaces matrices
+                // (https://github.com/google-ar/arcore-android-sdk/issues/78)
+                // (https://stackoverflow.com/questions/2407363/how-do-you-determine-when-an-object-is-drawn-on-screen-in-opengl)
+                // (https://stackoverflow.com/questions/52828668/how-to-calculate-field-of-view-in-arcore)
+                // in order to determine whether the anchor is still in the view
             }
         }
     }

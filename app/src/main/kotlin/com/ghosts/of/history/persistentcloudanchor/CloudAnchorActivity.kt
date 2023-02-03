@@ -107,6 +107,8 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private val resolvedAnchors: MutableList<Anchor> = ArrayList()
 
     @GuardedBy("anchorLock")
+    private var allAnchorIds: MutableList<String> = ArrayList()
+    private var allAnchorLastAccessed: MutableMap<String, Long> = mutableMapOf()
     private var unresolvedAnchorIds: MutableList<String> = ArrayList()
     private var cloudAnchorManager: CloudAnchorManager? = null
     private var currentMode: HostResolveMode? = null
@@ -352,6 +354,12 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     }
 
     override fun onDrawFrame(gl: GL10) {
+        // stop the current video if it played too long
+        /* val currentTime = System.currentTimeMillis()
+        for (anchor in resolvedAnchors) {
+
+        } */
+
         // Clear screen to notify driver it should not load any pixels from previous frame.
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
@@ -409,7 +417,9 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose = resolvedAnchor.pose
                         anchorPose.toMatrix(anchorMatrix, 0)
                         // Update and draw the model and its shadow.
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, viewMatrix, anchorPose)
+                        // debugText.text = "angle: ${getViewAngle(viewMatrix, anchorPose)}"
+                        // Log.d("DEGREES", "angle: ${getViewAngle(viewMatrix, anchorPose)}")
                     }
                 }
                 anchor?.let { anchor ->
@@ -418,7 +428,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose.toMatrix(anchorMatrix, 0)
                         anchorPose.getTranslation(anchorTranslation, 0)
                         anchorTranslation[3] = 1.0f
-                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(anchorMatrix, scaleFactor, colorCorrectionRgba, viewMatrix, anchorPose)
                         if (!hostedAnchor) {
                             shouldDrawFeatureMapQualityUi = true
                         }
@@ -492,9 +502,15 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         featureMapQualityUi.drawUi(anchorPose, viewMatrix, projectionMatrix, colorCorrectionRgba)
     }
 
-    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray) {
+    private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray, view: FloatArray, anchorPose: Pose) {
         if (!videoRenderer.isStarted) {
             videoRenderer.play("test.mp4", this)
+        } else {
+            if (canAnchorBeSeen(view, anchorPose)) {
+            } else {
+                videoRenderer.stop()
+                Log.d("VIDEOSTOP", "VIDEOSTOP")
+            }
         }
         videoRenderer.update(anchorMatrix, scaleFactor)
         videoRenderer.draw(viewMatrix, projectionMatrix)
@@ -518,6 +534,15 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         }
     }
 
+    private fun unsetAnchorAsResolved(newAnchor: Anchor) {
+        synchronized(anchorLock) {
+            if (resolvedAnchors.contains(newAnchor)) {
+                unresolvedAnchorIds.add(newAnchor.cloudAnchorId)
+                resolvedAnchors.remove(newAnchor)
+            }
+        }
+    }
+
     /** Callback function invoked when the privacy notice is accepted.  */
     private fun onPrivacyAcceptedForHost() {
         if (!sharedPreferences.edit().putBoolean(ALLOW_SHARE_IMAGES_KEY, true).commit()) {
@@ -535,10 +560,12 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         createSession()
         val resolveListener = ResolveListener()
         synchronized(anchorLock) {
-            unresolvedAnchorIds = intent.getStringArrayListExtra(EXTRA_ANCHORS_TO_RESOLVE)!!
+            allAnchorIds = intent.getStringArrayListExtra(EXTRA_ANCHORS_TO_RESOLVE)!!
+            unresolvedAnchorIds = allAnchorIds
             debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
             // Encourage the user to look at a previously mapped area.
             userMessageText.setText(R.string.resolving_processing)
+            Log.d("RESOLVS", "Started resolving")
             Log.i(TAG, String.format(
                     "Attempting to resolve %d anchor(s): %s",
                     unresolvedAnchorIds.size, unresolvedAnchorIds))
@@ -558,19 +585,23 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                     userMessageText.text = getString(R.string.resolving_error, state)
                     return@runOnUiThread
                 }
-                setAnchorAsResolved(anchor)
-                userMessageText.text = getString(R.string.resolving_success)
-                synchronized(anchorLock) {
-                    if (unresolvedAnchorIds.isEmpty()) {
-                        debugText.text = getString(R.string.debug_resolving_success)
-                    } else {
-                        Log.i(
-                                TAG, String.format(
-                                "Attempting to resolve %d anchor(s): %s",
-                                unresolvedAnchorIds.size, unresolvedAnchorIds))
-                        debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
+                if (unresolvedAnchorIds.contains(anchor.cloudAnchorId)) {
+                    setAnchorAsResolved(anchor)
+                    userMessageText.text = getString(R.string.resolving_success)
+                    synchronized(anchorLock) {
+                        if (unresolvedAnchorIds.isEmpty()) {
+                            // debugText.text = getString(R.string.debug_resolving_success)
+                        } else {
+                            Log.i(
+                                    TAG, String.format(
+                                    "Attempting to resolve %d anchor(s): %s",
+                                    unresolvedAnchorIds.size, unresolvedAnchorIds))
+                            debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
+                        }
                     }
                 }
+                allAnchorLastAccessed[anchor.cloudAnchorId] = System.currentTimeMillis()
+                Log.d("LASTFOUND", allAnchorLastAccessed.toString())
             }
         }
     }

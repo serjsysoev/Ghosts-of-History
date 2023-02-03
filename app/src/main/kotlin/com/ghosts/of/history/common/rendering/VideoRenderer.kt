@@ -192,6 +192,12 @@ class VideoRenderer : OnFrameAvailableListener {
         return true
     }
 
+    fun stop() {
+        player.reset()
+        player.stop()
+        isStarted = false
+    }
+
     private fun initializeMediaPlayer() {
         val handler = handler ?: run {
             val newHandler = Handler(Looper.getMainLooper())
