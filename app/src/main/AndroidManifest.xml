@@ -41,18 +41,18 @@
         android:exported="true"
         android:theme="@style/AppTheme"
         android:screenOrientation="locked">
-      <intent-filter>
-        <action android:name="android.intent.action.MAIN"/>
-        <category android:name="android.intent.category.LAUNCHER"/>
-      </intent-filter>
     </activity>
 
     <activity
         android:name=".persistentcloudanchor.CloudAnchorActivity"
         android:configChanges="orientation|screenSize"
-        android:exported="false"
+        android:exported="true"
         android:screenOrientation="locked"
         android:theme="@style/AppTheme">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
     </activity>
 
     <activity

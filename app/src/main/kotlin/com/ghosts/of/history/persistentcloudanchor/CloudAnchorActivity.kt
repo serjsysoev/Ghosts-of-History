@@ -107,7 +107,6 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private val resolvedAnchors: MutableList<Anchor> = ArrayList()
 
     @GuardedBy("anchorLock")
-    private var allAnchorIds: MutableList<String> = ArrayList()
     private var allAnchorLastAccessed: MutableMap<String, Long> = mutableMapOf()
     private var unresolvedAnchorIds: MutableList<String> = ArrayList()
     private var cloudAnchorManager: CloudAnchorManager? = null
@@ -560,8 +559,9 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         createSession()
         val resolveListener = ResolveListener()
         synchronized(anchorLock) {
-            allAnchorIds = intent.getStringArrayListExtra(EXTRA_ANCHORS_TO_RESOLVE)!!
-            unresolvedAnchorIds = allAnchorIds
+            // unresolvedAnchorIds = intent.getStringArrayListExtra(EXTRA_ANCHORS_TO_RESOLVE)!!
+            unresolvedAnchorIds = getAnchorIdList()
+            Log.d("ANCHORLIST", "$unresolvedAnchorIds")
             debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
             // Encourage the user to look at a previously mapped area.
             userMessageText.setText(R.string.resolving_processing)
