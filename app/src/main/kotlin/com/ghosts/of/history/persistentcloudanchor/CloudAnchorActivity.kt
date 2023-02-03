@@ -503,12 +503,14 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
 
     private fun drawAnchor(anchorMatrix: FloatArray, scaleFactor: Float, colorCorrectionRgba: FloatArray, view: FloatArray, anchorPose: Pose, anchorId: String) {
         if (!videoRenderer.isStarted) {
-            videoRenderer.play(getVideoFileName(anchorId), this)
+            videoRenderer.play(getVideoFileName(anchorId), this, anchorId)
         } else {
             if (canAnchorBeSeen(view, anchorPose)) {
             } else {
-                videoRenderer.stop()
-                Log.d("VIDEOSTOP", "VIDEOSTOP")
+                if (anchorId == videoRenderer.getCurrentAnchor()) {
+                    videoRenderer.stop()
+                    Log.d("VIDEOSTOP", "VIDEOSTOP")
+                }
             }
         }
         videoRenderer.update(anchorMatrix, scaleFactor)
