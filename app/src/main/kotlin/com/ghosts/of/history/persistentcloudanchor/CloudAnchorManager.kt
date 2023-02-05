@@ -36,7 +36,7 @@ internal class CloudAnchorManager(private val session: Session) {
     @Synchronized
     fun hostCloudAnchor(anchor: Anchor?, listener: CloudAnchorListener) {
         // Creating a Cloud Anchor with lifetime  = 1 day. This is configurable up to 365 days.
-        val newAnchor = session.hostCloudAnchorWithTtl(anchor,  /* ttlDays = */1)
+        val newAnchor = session.hostCloudAnchorWithTtl(anchor,  /* ttlDays = */365)
         pendingAnchors[newAnchor] = listener
     }
 

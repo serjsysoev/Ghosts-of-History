@@ -59,7 +59,7 @@
   <string name="debug_hosting_error">There was an error during Hosting: %1$s</string>
   <string name="nickname_title_text">Enter name</string>
   <string name="nickname_instructions_text">Enter a name for your anchor ID(to be stored in local app storage)</string>
-  <string name="nickname_default">CloudAnchor%1$d</string>
+  <string name="nickname_default">Cloud Anchor</string>
   <string name="nickname_dialog_ok">OK</string>
   <string name="too_close">You are too close; move backward.</string>
   <string name="too_far">You are too far; come closer</string>
