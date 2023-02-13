@@ -38,6 +38,7 @@ import com.ghosts.of.history.common.helpers.TrackingStateHelper
 import com.ghosts.of.history.common.rendering.*
 import com.ghosts.of.history.persistentcloudanchor.CloudAnchorManager.CloudAnchorListener
 import com.ghosts.of.history.persistentcloudanchor.PrivacyNoticeDialogFragment.HostResolveListener
+import com.ghosts.of.history.utils.AnchorData
 import com.ghosts.of.history.utils.fetchVideoFromStorage
 import com.ghosts.of.history.utils.getAnchorsDataFromFirebase
 import com.ghosts.of.history.utils.saveAnchorToFirebase
@@ -114,7 +115,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private var unresolvedAnchorIds: MutableList<String> = ArrayList()
 
     @GuardedBy("anchorLock")
-    private var anchorIdToVideoName: Map<String, String> = emptyMap()
+    private var anchorIdToAnchorData: Map<String, AnchorData> = emptyMap()
     private var cloudAnchorManager: CloudAnchorManager? = null
     private var currentMode: HostResolveMode? = null
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -416,9 +417,8 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         // during calls to session.update() as ARCore refines its estimate of the world.
                         anchorPose = resolvedAnchor.pose
                         anchorPose.toMatrix(anchorMatrix, 0)
-                        val scaleFactor = 0.2f
                         // Update and draw the model and its shadow.
-                        drawAnchor(resolvedAnchor, anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(resolvedAnchor, anchorMatrix, colorCorrectionRgba)
                     }
                 }
                 anchor?.let { anchor ->
@@ -427,8 +427,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         anchorPose.toMatrix(anchorMatrix, 0)
                         anchorPose.getTranslation(anchorTranslation, 0)
                         anchorTranslation[3] = 1.0f
-                        val scaleFactor = 1f
-                        drawAnchor(anchor, anchorMatrix, scaleFactor, colorCorrectionRgba)
+                        drawAnchor(anchor, anchorMatrix, colorCorrectionRgba)
                         if (!hostedAnchor) {
                             shouldDrawFeatureMapQualityUi = true
                         }
@@ -504,21 +503,21 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
 
     private fun drawAnchor(anchor: Anchor,
                            anchorMatrix: FloatArray,
-                           scaleFactor: Float,
                            colorCorrectionRgba: FloatArray) {
         if (currentMode == HostResolveMode.HOSTING) {
-            objectRenderer.updateModelMatrix(anchorMatrix, scaleFactor)
+            objectRenderer.updateModelMatrix(anchorMatrix, 1.0f)
             objectRenderer.draw(viewMatrix, projectionMatrix, colorCorrectionRgba)
         } else {
             val videoPlayer = videoPlayers[anchor.cloudAnchorId] ?: return
+            val anchorData = checkNotNull(anchorIdToAnchorData[anchor.cloudAnchorId])
             if (!videoPlayer.isFetching) {
                 synchronized(videoPlayer.lock) { videoPlayer.isFetching = true }
-                val videoName = checkNotNull(anchorIdToVideoName[anchor.cloudAnchorId])
+                val videoName = anchorData.videoName
                 fetchVideoFromStorage(videoName, this) {
                     videoPlayer.play(it)
                 }
             }
-            videoPlayer.update(anchorMatrix, scaleFactor)
+            videoPlayer.update(anchorMatrix, anchorData.scalingFactor)
             videoRenderer.draw(videoPlayer, viewMatrix, projectionMatrix)
         }
     }
@@ -561,7 +560,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         getAnchorsDataFromFirebase { anchorsData ->
             synchronized(anchorLock) {
                 unresolvedAnchorIds = anchorsData.map { it.anchorId }.toMutableList()
-                anchorIdToVideoName = anchorsData.associate { it.anchorId to it.videoName }
+                anchorIdToAnchorData = anchorsData.associateBy { it.anchorId }
                 debugText.text = getString(R.string.debug_resolving_processing, unresolvedAnchorIds.size)
                 // Encourage the user to look at a previously mapped area.
                 userMessageText.setText(R.string.resolving_processing)

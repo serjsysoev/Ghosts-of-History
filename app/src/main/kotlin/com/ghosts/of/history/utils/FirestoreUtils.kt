@@ -26,7 +26,8 @@ fun saveAnchorToFirebase(anchorId: String, anchorName: String) {
     val document = mapOf(
             "id" to anchorId,
             "name" to anchorName,
-            "video_name" to ""
+            "video_name" to "",
+            "scaling_factor" to 1.0
     )
     Firebase.firestore
             .collection("AnchorBindings")
@@ -43,13 +44,14 @@ fun getAnchorsDataFromFirebase(onSuccessCallback: (List<AnchorData>) -> Unit) {
                 result.map {
                     AnchorData(
                             it.get("id") as String,
-                            it.get("video_name") as String
+                            it.get("video_name") as String,
+                            (it.get("scaling_factor") as Number).toFloat()
                     )
                 }.let(onSuccessCallback)
             }
 }
 
-data class AnchorData(val anchorId: String, val videoName: String)
+data class AnchorData(val anchorId: String, val videoName: String, val scalingFactor: Float)
 
 // onSuccessCallback processes just a video name
 fun processAnchorDescription(anchorId: String, onSuccessCallback: (String?) -> Unit) {
