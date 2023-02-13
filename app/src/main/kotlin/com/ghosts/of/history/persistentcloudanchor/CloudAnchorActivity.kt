@@ -38,6 +38,7 @@ import com.ghosts.of.history.common.helpers.TrackingStateHelper
 import com.ghosts.of.history.common.rendering.*
 import com.ghosts.of.history.persistentcloudanchor.CloudAnchorManager.CloudAnchorListener
 import com.ghosts.of.history.persistentcloudanchor.PrivacyNoticeDialogFragment.HostResolveListener
+import com.ghosts.of.history.utils.fetchVideoFromStorage
 import com.ghosts.of.history.utils.getAnchorsDataFromFirebase
 import com.ghosts.of.history.utils.saveAnchorToFirebase
 import com.google.ar.core.*
@@ -510,9 +511,12 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             objectRenderer.draw(viewMatrix, projectionMatrix, colorCorrectionRgba)
         } else {
             val videoPlayer = videoPlayers[anchor.cloudAnchorId] ?: return
-            if (!videoPlayer.isStarted) {
+            if (!videoPlayer.isFetching) {
+                synchronized(videoPlayer.lock) { videoPlayer.isFetching = true }
                 val videoName = checkNotNull(anchorIdToVideoName[anchor.cloudAnchorId])
-                videoPlayer.play(videoName, this)
+                fetchVideoFromStorage(videoName, this) {
+                    videoPlayer.play(it)
+                }
             }
             videoPlayer.update(anchorMatrix, scaleFactor)
             videoRenderer.draw(videoPlayer, viewMatrix, projectionMatrix)

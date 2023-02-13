@@ -1,9 +1,16 @@
 package com.ghosts.of.history.utils
 
-import android.net.Uri
-import com.google.firebase.ktx.Firebase
+import android.content.Context
 import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
 import com.google.firebase.storage.ktx.storage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.net.URL
+import java.util.*
 
 
 // onSuccessCallback processes an in-storage-path of this video
@@ -59,8 +66,19 @@ fun processAnchorSets(setName: String, onSuccessCallback: (Array<String>?) -> Un
     }
 }
 
-fun fetchVideoFromStorage(path: String, onSuccessCallback: (Uri?) -> Unit) {
-    val storage = Firebase.storage.reference.child("gs://ghosts-of-history.appspot.com/$path").downloadUrl.addOnSuccessListener {
-        onSuccessCallback(it)
+fun fetchVideoFromStorage(path: String, context: Context, onSuccessCallback: (File) -> Unit) {
+    Firebase.storage.reference.child(path).downloadUrl.addOnSuccessListener {
+        CoroutineScope(Dispatchers.IO).launch {
+            val url = URL(it.toString())
+            val connection = url.openConnection()
+            connection.connect()
+            val stream = connection.getInputStream()
+            val randomFilename = UUID.randomUUID().toString() + File(path).name
+            val downloadingMediaFile = File(context.cacheDir, randomFilename)
+
+            val out = FileOutputStream(downloadingMediaFile)
+            stream.copyTo(out)
+            onSuccessCallback(downloadingMediaFile)
+        }
     }
 }

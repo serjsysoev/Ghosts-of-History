@@ -10,6 +10,7 @@ import android.opengl.Matrix
 import android.util.Log
 import android.view.Surface
 import com.ghosts.of.history.common.rendering.ShaderUtil.checkGLError
+import java.io.File
 import java.io.IOException
 import java.nio.Buffer
 import java.nio.ByteBuffer
@@ -53,8 +54,10 @@ class VideoRenderer {
     }
 
     fun draw(player: VideoPlayer, cameraView: FloatArray, cameraPerspective: FloatArray) {
+        if (!player.isStarted) {
+            return
+        }
         if (!player.initialized) {
-            println("initialize!")
             player.initialize()
         }
         if (player.done || !player.prepared) {
@@ -184,6 +187,7 @@ class VideoPlayer : OnFrameAvailableListener {
         private set
     var prepared = false
         private set
+    var isFetching = false
     var isStarted = false
         private set
     var mTextureId = 0
@@ -197,7 +201,6 @@ class VideoPlayer : OnFrameAvailableListener {
         val textures = IntArray(1)
         GLES20.glGenTextures(1, textures, 0)
         mTextureId = textures[0]
-        println("mTextureId $mTextureId")
         val mTextureTarget = GLES11Ext.GL_TEXTURE_EXTERNAL_OES
         GLES20.glBindTexture(mTextureTarget, mTextureId)
         GLES20.glTexParameteri(mTextureTarget, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
@@ -210,7 +213,7 @@ class VideoPlayer : OnFrameAvailableListener {
         initialized = true
     }
 
-    fun play(filename: String, context: Context): Boolean {
+    fun play(file: File): Boolean {
         player.reset()
         done = false
         player.setOnPreparedListener { mp: MediaPlayer ->
@@ -224,12 +227,7 @@ class VideoPlayer : OnFrameAvailableListener {
         player.setOnCompletionListener { done = true }
         player.setOnInfoListener { _: MediaPlayer?, _: Int, _: Int -> false }
         try {
-            val assets = context.assets
-            val descriptor = assets.openFd(filename)
-            player.setDataSource(
-                    descriptor.fileDescriptor,
-                    descriptor.startOffset,
-                    descriptor.length)
+            player.setDataSource(file.inputStream().fd)
             player.isLooping = true
             synchronized(lock) { isStarted = true }
         } catch (e: IOException) {
