@@ -502,7 +502,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                 worldPosition[1] * viewProjectionMatrix[7] +
                 worldPosition[2] * viewProjectionMatrix[11] +
                 1.0f * viewProjectionMatrix[15]
-        if (temp < 0f) {
+        if (temp <= 0f) {
             return false
         }
         var x = worldPosition[0] * viewProjectionMatrix[0] +
