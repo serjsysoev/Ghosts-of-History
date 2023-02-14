@@ -31,10 +31,7 @@ import androidx.annotation.GuardedBy
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.DialogFragment
 import com.ghosts.of.history.R
-import com.ghosts.of.history.common.helpers.CameraPermissionHelper
-import com.ghosts.of.history.common.helpers.DisplayRotationHelper
-import com.ghosts.of.history.common.helpers.FullScreenHelper
-import com.ghosts.of.history.common.helpers.TrackingStateHelper
+import com.ghosts.of.history.common.helpers.*
 import com.ghosts.of.history.common.rendering.*
 import com.ghosts.of.history.persistentcloudanchor.CloudAnchorManager.CloudAnchorListener
 import com.ghosts.of.history.persistentcloudanchor.PrivacyNoticeDialogFragment.HostResolveListener
@@ -416,7 +413,20 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         // Get the current pose of an Anchor in world space. The Anchor pose is updated
                         // during calls to session.update() as ARCore refines its estimate of the world.
                         anchorPose = resolvedAnchor.pose
-                        anchorPose.toMatrix(anchorMatrix, 0)
+
+                        val objectNativeFacing = listOf(1f, 0f, 0f).toFloatArray() // direction object faces in model
+
+                        val anchorPoseTranslation = anchorPose.extractTranslation()
+                        val objectToCamera = anchorPoseTranslation
+                                .inverse()
+                                .compose(camera.pose).let { pose ->
+                                    FloatArray(3).also { pose.getTranslation(it, 0) }
+                                }.also { it[1] = 0f }
+
+                        val cameraFacingPose = anchorPoseTranslation
+                                .compose(MathHelpers.rotateBetween(objectNativeFacing, objectToCamera))
+                                .compose(Pose.makeRotation(0.0f, 0.707f, 0.0f, 0.707f)) // rotate 90 degrees around OY
+                        cameraFacingPose.toMatrix(anchorMatrix, 0)
                         // Update and draw the model and its shadow.
                         drawAnchor(resolvedAnchor, anchorMatrix, colorCorrectionRgba)
                     }
