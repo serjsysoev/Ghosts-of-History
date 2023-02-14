@@ -216,9 +216,8 @@ class VideoPlayer : OnFrameAvailableListener {
     fun play(file: File): Boolean {
         player.reset()
         done = false
-        player.setOnPreparedListener { mp: MediaPlayer ->
+        player.setOnPreparedListener {
             prepared = true
-            mp.start()
         }
         player.setOnErrorListener { _: MediaPlayer?, _: Int, _: Int ->
             done = true
@@ -237,12 +236,15 @@ class VideoPlayer : OnFrameAvailableListener {
         return true
     }
 
-    fun pausePlayback() {
+    fun pausePlaybackAndSeekToStart() {
         player.pause()
+        player.seekTo(0)
     }
 
-    fun continuePlayback() {
-        player.start()
+    fun startPlayback() {
+        if (prepared) {
+            player.start()
+        }
     }
 
     fun update(modelMatrix: FloatArray, scaleFactor: Float) {

@@ -14,7 +14,6 @@
  */
 package com.ghosts.of.history.persistentcloudanchor
 
-import android.opengl.Matrix
 import com.ghosts.of.history.common.rendering.ObjectRenderer
 import com.google.ar.core.Pose
 import com.google.ar.core.Session.FeatureMapQuality
@@ -132,22 +131,6 @@ internal class FeatureMapQualityUi private constructor(private val isHorizontal:
         private val BAR_COLOR_LOW_QUALITY = floatArrayOf(234.0f, 67.0f, 53.0f, 255.0f)
         private val BAR_COLOR_MEDIUM_QUALITY = floatArrayOf(250.0f, 187.0f, 5.0f, 255.0f)
         private val BAR_COLOR_HIGH_QUALITY = floatArrayOf(52.0f, 168.0f, 82.0f, 255.0f)
-
-        /**
-         * Returns true if the anchor (specified by anchorTranslationWorld is visible in the camera view (
-         * specified by viewMatrix and projectionMatrix); otherwise false.
-         */
-        fun isAnchorInView(
-                anchorTranslationWorld: FloatArray?, viewMatrix: FloatArray?, projectionMatrix: FloatArray?): Boolean {
-            val viewProjectionMatrix = FloatArray(16)
-            val anchorTranslationNDC = FloatArray(4)
-            // Project point to Normalized Device Coordinates and check if in bounds.
-            Matrix.multiplyMM(viewProjectionMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
-            Matrix.multiplyMV(anchorTranslationNDC, 0, viewProjectionMatrix, 0, anchorTranslationWorld, 0)
-            val ndcX = anchorTranslationNDC[0] / anchorTranslationNDC[3]
-            val ndcY = anchorTranslationNDC[1] / anchorTranslationNDC[3]
-            return ndcX < -1 || ndcX > 1 || ndcY < -1 || ndcY <= 1
-        }
 
         fun createHorizontalFeatureMapQualityUi(
                 objectRenderer: ObjectRenderer): FeatureMapQualityUi {

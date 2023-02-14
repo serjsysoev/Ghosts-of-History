@@ -20,6 +20,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.opengl.Matrix
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -79,7 +80,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     private val anchorMatrix = FloatArray(16)
     private val viewMatrix = FloatArray(16)
     private val projectionMatrix = FloatArray(16)
-    private val anchorTranslation = FloatArray(4)
+    private val anchorTranslation = FloatArray(3)
 
     // Locks needed for synchronization
     private val singleTapLock = Any()
@@ -107,6 +108,9 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
 
     @GuardedBy("anchorLock")
     private val resolvedAnchors: MutableList<Anchor> = ArrayList()
+
+    @GuardedBy("anchorLock")
+    private var playingAnchor: Anchor? = null
 
     @GuardedBy("anchorLock")
     private var unresolvedAnchorIds: MutableList<String> = ArrayList()
@@ -270,6 +274,10 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             surfaceView.onPause()
             it.pause()
         }
+        playingAnchor?.let {
+            videoPlayers[it.cloudAnchorId]?.pausePlaybackAndSeekToStart()
+        }
+        playingAnchor = null
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, results: IntArray) {
@@ -431,12 +439,33 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                         drawAnchor(resolvedAnchor, anchorMatrix, colorCorrectionRgba)
                     }
                 }
+                val closestAnchor = resolvedAnchors.filter { anchor ->
+                    anchor.pose.getTranslation(anchorTranslation, 0)
+                    isWorldPositionVisible(anchorTranslation)
+                }.minByOrNull { anchor ->
+                    val cameraPose = camera.pose
+                    val anchorPose = anchor.pose
+                    val x = cameraPose.tx() - anchorPose.tx()
+                    val y = cameraPose.ty() - anchorPose.ty()
+                    val z = cameraPose.tz() - anchorPose.tz()
+                    x * x + y * y + z * z
+                }
+
+                if (closestAnchor != playingAnchor) {
+                    playingAnchor?.let {
+                        videoPlayers[it.cloudAnchorId]?.pausePlaybackAndSeekToStart()
+                    }
+                    playingAnchor = null
+                }
+                closestAnchor?.let {
+                    videoPlayers[closestAnchor.cloudAnchorId]?.startPlayback()
+                    playingAnchor = closestAnchor
+                }
                 anchor?.let { anchor ->
                     if (anchor.trackingState == TrackingState.TRACKING) {
                         anchorPose = anchor.pose
                         anchorPose.toMatrix(anchorMatrix, 0)
                         anchorPose.getTranslation(anchorTranslation, 0)
-                        anchorTranslation[3] = 1.0f
                         drawAnchor(anchor, anchorMatrix, colorCorrectionRgba)
                         if (!hostedAnchor) {
                             shouldDrawFeatureMapQualityUi = true
@@ -465,6 +494,34 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
         }
     }
 
+    private fun isWorldPositionVisible(worldPosition: FloatArray): Boolean {
+        val viewProjectionMatrix = FloatArray(16)
+        Matrix.multiplyMM(viewProjectionMatrix, 0, projectionMatrix, 0, viewMatrix, 0)
+        val temp =
+                worldPosition[0] * viewProjectionMatrix[3] +
+                worldPosition[1] * viewProjectionMatrix[7] +
+                worldPosition[2] * viewProjectionMatrix[11] +
+                1.0f * viewProjectionMatrix[15]
+        if (temp < 0f) {
+            return false
+        }
+        var x = worldPosition[0] * viewProjectionMatrix[0] +
+                worldPosition[1] * viewProjectionMatrix[4] +
+                worldPosition[2] * viewProjectionMatrix[8] +
+                1.0f * viewProjectionMatrix[12]
+        x /= temp
+        if (x !in -1f..1f) {
+            return false
+        }
+
+        var y = worldPosition[0] * viewProjectionMatrix[1] +
+                worldPosition[1] * viewProjectionMatrix[5] +
+                worldPosition[2] * viewProjectionMatrix[9] +
+                1.0f * viewProjectionMatrix[13]
+        y /= temp
+        return y in -1f..1f
+    }
+
     private fun updateFeatureMapQualityUi(camera: Camera, colorCorrectionRgba: FloatArray) {
         val featureMapQualityUiPose = anchorPose.compose(featureMapQualityUi.uiTransform)
         val cameraUiFrame = featureMapQualityUiPose.inverse().compose(camera.pose).translation
@@ -484,7 +541,7 @@ class CloudAnchorActivity : AppCompatActivity(), GLSurfaceView.Renderer {
                 // quality bar) using the vector going from the phone to the anchor. If the person is
                 // looking away from the anchor and we would incorrectly update the intersected angle with
                 // the FeatureMapQuality from their current view. So we check isAnchorInView() here.
-                && FeatureMapQualityUi.isAnchorInView(anchorTranslation, viewMatrix, projectionMatrix)) {
+                && isWorldPositionVisible(anchorTranslation)) {
             lastEstimateTimestampMillis = now
             // Update the FeatureMapQuality for the current camera viewpoint. Can pass in ANY valid camera
             // pose to estimateFeatureMapQualityForHosting(). Ideally, the pose should represent users’
