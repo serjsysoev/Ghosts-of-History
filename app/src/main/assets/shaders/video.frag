@@ -9,7 +9,7 @@ void main() {
   float red = 0.0;
   float green = 1.0;
   float blue = 0.0;
-  float accuracy = 0.2;
+  float accuracy = 0.5;
   if (abs(color.r - red) <= accuracy && abs(color.g - green) <= accuracy && abs(color.b - blue) <= accuracy) {
       gl_FragColor = vec4(color.r, color.g, color.b, 0.0);
   } else {
