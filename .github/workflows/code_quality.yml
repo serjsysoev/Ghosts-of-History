@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - master
       - 'releases/*'
 
 jobs:
@@ -16,3 +17,5 @@ jobs:
           fetch-depth: 0
       - name: 'Qodana Scan'
         uses: JetBrains/qodana-action@v2022.3.4
+        env:
+          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
